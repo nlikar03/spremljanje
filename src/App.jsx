@@ -7,7 +7,7 @@ import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import { precompute, computeSummaries, computeKPIs, computeFiltered } from './utils/compute'
 
-const BACKEND = 'https://spremljanje-backend.onrender.com'
+const BACKEND = import.meta.env.VITE_BACKEND_URL
 
 function LoginScreen({ onLogin }) {
   const [password, setPassword] = useState('')
