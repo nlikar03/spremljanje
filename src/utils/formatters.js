@@ -15,6 +15,14 @@ export function fmtM(n) {
   return n.toLocaleString('sl-SI', { minimumFractionDigits: 0, maximumFractionDigits: 0, useGrouping: true }) + ' €'
 }
 
+// Very compact money for tight spaces: 1.2M, 340k, 0
+export function fmtK(n) {
+  const a = Math.abs(n)
+  if (a >= 1e6) return (n / 1e6).toLocaleString('sl-SI', { maximumFractionDigits: 1 }) + 'M'
+  if (a >= 1e3) return Math.round(n / 1e3).toLocaleString('sl-SI') + 'k'
+  return Math.round(n).toLocaleString('sl-SI')
+}
+
 export function fmtP(n, d = 2) {
   return n.toLocaleString('sl-SI', { minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: true })
 }

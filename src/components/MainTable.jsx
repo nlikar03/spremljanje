@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { fmtM, fmtP, trunc, realClass, cpiClass, cpiLabel } from '../utils/formatters'
-import { IconChevronRight } from './Icons'
+import { IconChevronRight, IconCheck } from './Icons'
+import { groupIsEmpty } from '../utils/compute'
 import DetailPanel from './DetailPanel'
 
 function MetricPair({ label, value, sub, color }) {
@@ -25,7 +26,7 @@ function ProgressBar({ real }) {
   )
 }
 
-function WBSCard({ s, bac, expanded, onToggle, data, activeTab, setActiveTab, selectedMonths, overrides, setOverrides, stroskiOverrides, setStroskiOverrides }) {
+function WBSCard({ s, bac, expanded, onToggle, data, activeTab, setActiveTab, selectedMonths, overrides, setOverrides, stroskiOverrides, setStroskiOverrides, wbsEdits, setWbsEdits }) {
   const gap  = s.obrZn - s.strZn
   const real = s.pog > 0 ? s.obrZn / s.pog * 100 : 0
   const cpi  = s.strZn > 0 ? s.obrZn / s.strZn : null
@@ -33,15 +34,56 @@ function WBSCard({ s, bac, expanded, onToggle, data, activeTab, setActiveTab, se
 
   const gapColor = gap >= 0 ? 'var(--green)' : 'var(--red)'
 
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(s.label)
+  const empty = groupIsEmpty(s.wbs, data, overrides, stroskiOverrides)
+
+  function saveLabel() {
+    setWbsEdits(prev => ({ ...prev, labelOverrides: { ...prev.labelOverrides, [s.wbs]: draft.trim() || s.wbs } }))
+    setEditing(false)
+  }
+
+  function deleteGroup(e) {
+    e.stopPropagation()
+    if (!empty) return
+    setWbsEdits(prev => ({ ...prev, deletedGroups: [...new Set([...prev.deletedGroups, s.wbs])] }))
+  }
+
   return (
     <div className={`wbs-card${expanded ? ' wbs-card-expanded' : ''}`}>
-      <div className="wbs-card-header" onClick={onToggle}>
+      <div className="wbs-card-header" onClick={editing ? undefined : onToggle}>
         <div className="wbs-card-left">
           <span className={`wbs-chevron${expanded ? ' wbs-chevron-open' : ''}`}>
             <IconChevronRight size={11} />
           </span>
           <div className="wbs-card-id">{s.wbs}</div>
-          <div className="wbs-card-title" title={s.label}>{s.label}</div>
+          {editing ? (
+            <span className="wbs-edit" onClick={e => e.stopPropagation()}>
+              <input
+                autoFocus
+                className="wbs-edit-input"
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveLabel(); if (e.key === 'Escape') { setEditing(false); setDraft(s.label) } }}
+              />
+              <button className="wbs-edit-btn" onClick={saveLabel} title="Shrani"><IconCheck size={11} /></button>
+            </span>
+          ) : (
+            <div className="wbs-card-title" title={s.label}>{s.label}</div>
+          )}
+          <span className="wbs-card-tools" onClick={e => e.stopPropagation()}>
+            {!editing && (
+              <button className="wbs-tool-btn" title="Preimenuj" onClick={e => { e.stopPropagation(); setDraft(s.label); setEditing(true) }}>✎</button>
+            )}
+            {!editing && (
+              <button
+                className="wbs-tool-btn wbs-tool-del"
+                title={empty ? 'Izbriši (prazen)' : 'Najprej premakni vse postavke/stroške'}
+                disabled={!empty}
+                onClick={deleteGroup}
+              >✕</button>
+            )}
+          </span>
         </div>
 
         <div className="wbs-card-metrics">
@@ -91,6 +133,7 @@ function WBSCard({ s, bac, expanded, onToggle, data, activeTab, setActiveTab, se
             setOverrides={setOverrides}
             stroskiOverrides={stroskiOverrides}
             setStroskiOverrides={setStroskiOverrides}
+            wbsEdits={wbsEdits}
           />
         </div>
       )}
@@ -98,7 +141,22 @@ function WBSCard({ s, bac, expanded, onToggle, data, activeTab, setActiveTab, se
   )
 }
 
-export default function MainTable({ data, summaries, bac, expandedWBS, setExpandedWBS, activeTab, setActiveTab, selectedMonths, overrides, setOverrides, stroskiOverrides, setStroskiOverrides }) {
+export default function MainTable({ data, summaries, bac, expandedWBS, setExpandedWBS, activeTab, setActiveTab, selectedMonths, overrides, setOverrides, stroskiOverrides, setStroskiOverrides, wbsEdits, setWbsEdits }) {
+  const [newName, setNewName] = useState('')
+
+  function addGroup() {
+    const label = newName.trim()
+    if (!label) return
+    // Synthesize a stable custom code; label is stored via labelOverrides.
+    const code = 'NOV-' + Date.now().toString(36)
+    setWbsEdits(prev => ({
+      ...prev,
+      customGroups: [...prev.customGroups, code],
+      labelOverrides: { ...prev.labelOverrides, [code]: label },
+    }))
+    setNewName('')
+  }
+
   const totPog   = summaries.reduce((s, x) => s + x.pog, 0)
   const totObrZn = summaries.reduce((s, x) => s + x.obrZn, 0)
   const totStrZn = summaries.reduce((s, x) => s + x.strZn, 0)
@@ -152,6 +210,18 @@ export default function MainTable({ data, summaries, bac, expandedWBS, setExpand
         </div>
       </div>
 
+      <div className="wbs-newbar">
+        <span className="wbs-newbar-label">Nov WBS element:</span>
+        <input
+          className="wbs-newbar-input"
+          placeholder="Ime elementa…"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') addGroup() }}
+        />
+        <button className="btn-sm" onClick={addGroup} disabled={!newName.trim()}>+ Dodaj</button>
+      </div>
+
       {summaries.map(s => (
         <WBSCard
           key={s.wbs}
@@ -167,6 +237,8 @@ export default function MainTable({ data, summaries, bac, expandedWBS, setExpand
           setOverrides={setOverrides}
           stroskiOverrides={stroskiOverrides}
           setStroskiOverrides={setStroskiOverrides}
+          wbsEdits={wbsEdits}
+          setWbsEdits={setWbsEdits}
         />
       ))}
     </div>

@@ -95,6 +95,14 @@ export function IconChevronRight({ size = 10 }) {
   )
 }
 
+export function IconCheck({ size = 11 }) {
+  return (
+    <svg {...props} width={size} height={size} strokeWidth={3}>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  )
+}
+
 export function IconDatabase({ size = 14 }) {
   return (
     <svg {...props} width={size} height={size}>

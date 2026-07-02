@@ -1,7 +1,10 @@
 import React, { useState } from 'react'
 import { fmtP, fmtE, fmtM, monthLabel, trunc } from '../utils/formatters'
 import { IconFileText, IconActivity } from './Icons'
-import { itemKey, resolveWBS, stroskiKey, resolveStroskiWBS } from '../utils/compute'
+import { itemKey, resolveWBS, stroskiKey, resolveStroskiWBS, effectiveGroups, effectiveLabel } from '../utils/compute'
+import { useColWidths, ResizableTh } from './ResizableCols'
+
+const BLIST_COL_DEFAULTS = [64, 108, null, 40, 82, 90, 112, 112, 66, 200]
 
 function WBSSelect({ item, wbsGroups, wbsLabels, overrides, setOverrides }) {
   const current = resolveWBS(item, overrides)
@@ -32,7 +35,7 @@ function WBSSelect({ item, wbsGroups, wbsLabels, overrides, setOverrides }) {
   )
 }
 
-function BlistRow({ it, selM, isOverridden, wbsGroups, wbsLabels, overrides, setOverrides }) {
+function BlistRow({ it, selM, isTransplant, origLabel, wbsGroups, wbsLabels, overrides, setOverrides }) {
   const [open, setOpen] = useState(false)
   const rowZn = selM.reduce((s, m) => s + (it.meseci[m]?.znesek || 0), 0)
   const rowKol = selM.reduce((s, m) => s + (it.meseci[m]?.kolicina || 0), 0)
@@ -41,11 +44,12 @@ function BlistRow({ it, selM, isOverridden, wbsGroups, wbsLabels, overrides, set
   return (
     <>
       <tr
-        className={`blist-row${isOverridden ? ' row-overridden' : ''}`}
+        className={`blist-row${isTransplant ? ' row-transplant' : ''}`}
         onClick={() => setOpen(o => !o)}
+        title={isTransplant ? `Premaknjeno iz: ${origLabel}` : undefined}
       >
-        <td className="blist-zst">{it.zst}</td>
-        <td className="blist-sifra">{it.sifra}</td>
+        <td className="blist-zst" title={it.zst}>{it.zst}</td>
+        <td className="blist-sifra" title={it.sifra}>{it.sifra}</td>
         <td className="blist-opis" title={it.opis}>{it.opis}</td>
         <td className="blist-em">{it.em}</td>
         <td className="num blist-num">{fmtP(it.kolicina_pc, 3)}</td>
@@ -85,13 +89,18 @@ function BlistRow({ it, selM, isOverridden, wbsGroups, wbsLabels, overrides, set
   )
 }
 
-function BlistDetail({ wbs, data, selectedMonths, overrides, setOverrides }) {
-  const items = data.blist_items.filter(x => x.wbs_group === wbs)
+function BlistDetail({ wbs, data, selectedMonths, overrides, setOverrides, wbsGroups, wbsLabels }) {
+  const { widths, onResizeStart } = useColWidths('blist', BLIST_COL_DEFAULTS)
+  // Items that RESOLVE to this WBS (so moved-in items appear, moved-out leave).
+  const items = data.blist_items.filter(x => resolveWBS(x, overrides) === wbs)
   const selM = data.blist_months.filter(m => selectedMonths.has(m))
   if (!items.length) return <div className="no-data">Ni BLIST postavk za ta WBS</div>
 
+  const isTransplant = it => resolveWBS(it, overrides) !== it.wbs_group
+  const hasData = it => selM.some(m => it.meseci[m]?.znesek !== 0 || it.meseci[m]?.kolicina !== 0)
+  // Keep month-activity filter, but never hide an item moved INTO this WBS.
   const active = selM.length === 0 ? items
-    : items.filter(it => selM.some(m => it.meseci[m]?.znesek !== 0 || it.meseci[m]?.kolicina !== 0))
+    : items.filter(it => isTransplant(it) || hasData(it))
 
   const overriddenCount = active.filter(it => itemKey(it) in overrides).length
   let totPog = 0, totObrZn = 0
@@ -136,8 +145,8 @@ function BlistDetail({ wbs, data, selectedMonths, overrides, setOverrides }) {
             onClick={e => e.stopPropagation()}
           >
             <option value="" disabled>izberi WBS…</option>
-            {data.wbs_groups.map(g => (
-              <option key={g} value={g}>{g} — {trunc(data.wbs_labels[g] || g, 30)}</option>
+            {wbsGroups.map(g => (
+              <option key={g} value={g}>{g} — {trunc(wbsLabels[g] || g, 30)}</option>
             ))}
           </select>
           {overriddenCount > 0 && (
@@ -151,29 +160,20 @@ function BlistDetail({ wbs, data, selectedMonths, overrides, setOverrides }) {
       <div className="dtable-wrap">
         <table className="dtable blist-table">
           <colgroup>
-            <col style={{ width: 42 }} />
-            <col style={{ width: 76 }} />
-            <col />
-            <col style={{ width: 36 }} />
-            <col style={{ width: 82 }} />
-            <col style={{ width: 90 }} />
-            <col style={{ width: 112 }} />
-            <col style={{ width: 112 }} />
-            <col style={{ width: 66 }} />
-            <col style={{ width: 200 }} />
+            {widths.map((w, i) => <col key={i} style={w != null ? { width: w } : undefined} />)}
           </colgroup>
           <thead>
             <tr>
-              <th>Z.Št</th>
-              <th>Šifra</th>
-              <th style={{ textAlign: 'left' }}>Opis</th>
-              <th>EM</th>
-              <th>Kol.PC</th>
-              <th>Cena PC</th>
-              <th>Znesek PC</th>
-              <th>Skupaj obr.</th>
-              <th>Mes.</th>
-              <th style={{ textAlign: 'left' }}>WBS</th>
+              <ResizableTh index={0} onResizeStart={onResizeStart}>Z.Št</ResizableTh>
+              <ResizableTh index={1} onResizeStart={onResizeStart}>Šifra</ResizableTh>
+              <ResizableTh index={2} onResizeStart={onResizeStart} style={{ textAlign: 'left' }}>Opis</ResizableTh>
+              <ResizableTh index={3} onResizeStart={onResizeStart}>EM</ResizableTh>
+              <ResizableTh index={4} onResizeStart={onResizeStart}>Kol.PC</ResizableTh>
+              <ResizableTh index={5} onResizeStart={onResizeStart}>Cena PC</ResizableTh>
+              <ResizableTh index={6} onResizeStart={onResizeStart}>Znesek PC</ResizableTh>
+              <ResizableTh index={7} onResizeStart={onResizeStart}>Skupaj obr.</ResizableTh>
+              <ResizableTh index={8} onResizeStart={onResizeStart}>Mes.</ResizableTh>
+              <ResizableTh index={9} onResizeStart={onResizeStart} style={{ textAlign: 'left' }}>WBS</ResizableTh>
             </tr>
           </thead>
           <tbody>
@@ -182,9 +182,10 @@ function BlistDetail({ wbs, data, selectedMonths, overrides, setOverrides }) {
                 key={it.zst + '_' + it.sifra}
                 it={it}
                 selM={selM}
-                isOverridden={itemKey(it) in overrides}
-                wbsGroups={data.wbs_groups}
-                wbsLabels={data.wbs_labels}
+                isTransplant={isTransplant(it)}
+                origLabel={wbsLabels[it.wbs_group] || it.wbs_group}
+                wbsGroups={wbsGroups}
+                wbsLabels={wbsLabels}
                 overrides={overrides}
                 setOverrides={setOverrides}
               />
@@ -231,13 +232,14 @@ function StroskiWBSSelect({ it, idx, wbsGroups, wbsLabels, stroskiOverrides, set
   )
 }
 
-function StroskiDetail({ wbs, data, selectedMonths, stroskiOverrides, setStroskiOverrides }) {
-  // Keep global index so keys match computeSummaries; a row stays listed in its
-  // ORIGINAL wbs panel (so it can be moved back) even after being reassigned.
+function StroskiDetail({ wbs, data, selectedMonths, stroskiOverrides, setStroskiOverrides, wbsGroups, wbsLabels }) {
+  // Global index keeps keys aligned with computeSummaries. Filter by RESOLVED
+  // WBS so moved-in rows appear here and moved-out rows leave.
   const all = data.stroski_items
     .map((it, idx) => ({ it, idx }))
-    .filter(({ it }) => it.wbs_group === wbs)
-  const items = all.filter(({ it }) => selectedMonths.has(it.mesec))
+    .filter(({ it, idx }) => resolveStroskiWBS(it, idx, stroskiOverrides) === wbs)
+  const items = all.filter(({ it, idx }) =>
+    resolveStroskiWBS(it, idx, stroskiOverrides) !== it.wbs_group || selectedMonths.has(it.mesec))
 
   if (!all.length) return <div className="no-data">Ni SAP stroškov za ta WBS</div>
   if (!items.length) return <div className="no-data">Ni SAP stroškov za izbrana obdobja (skupaj {all.length} vrstic)</div>
@@ -268,9 +270,10 @@ function StroskiDetail({ wbs, data, selectedMonths, stroskiOverrides, setStroski
   const rows = items.map(({ it, idx }) => {
     tot += it.znesek
     const desc = it.tekst || it.oznaka || ''
-    const isOverridden = stroskiKey(it, idx) in stroskiOverrides
+    const isTransplant = resolveStroskiWBS(it, idx, stroskiOverrides) !== it.wbs_group
     return (
-      <tr key={idx} className={isOverridden ? 'row-overridden' : ''}>
+      <tr key={idx} className={isTransplant ? 'row-transplant' : ''}
+        title={isTransplant ? `Premaknjeno iz: ${wbsLabels[it.wbs_group] || it.wbs_group}` : undefined}>
         <td style={{ width: 88 }}>{it.datum}</td>
         <td style={{ width: 110, fontSize: 10 }}>{it.wbs}</td>
         <td style={{ width: 130 }} title={it.oznaka}>{trunc(it.oznaka, 20)}</td>
@@ -280,7 +283,7 @@ function StroskiDetail({ wbs, data, selectedMonths, stroskiOverrides, setStroski
         <td style={{ width: 200 }} onClick={e => e.stopPropagation()}>
           <StroskiWBSSelect
             it={it} idx={idx}
-            wbsGroups={data.wbs_groups} wbsLabels={data.wbs_labels}
+            wbsGroups={wbsGroups} wbsLabels={wbsLabels}
             stroskiOverrides={stroskiOverrides} setStroskiOverrides={setStroskiOverrides}
           />
         </td>
@@ -304,8 +307,8 @@ function StroskiDetail({ wbs, data, selectedMonths, stroskiOverrides, setStroski
             onClick={e => e.stopPropagation()}
           >
             <option value="" disabled>izberi WBS…</option>
-            {data.wbs_groups.map(g => (
-              <option key={g} value={g}>{g} — {trunc(data.wbs_labels[g] || g, 30)}</option>
+            {wbsGroups.map(g => (
+              <option key={g} value={g}>{g} — {trunc(wbsLabels[g] || g, 30)}</option>
             ))}
           </select>
           {overriddenCount > 0 && (
@@ -337,7 +340,9 @@ function StroskiDetail({ wbs, data, selectedMonths, stroskiOverrides, setStroski
   )
 }
 
-export default function DetailPanel({ wbs, data, activeTab, setActiveTab, selectedMonths, overrides, setOverrides, stroskiOverrides, setStroskiOverrides }) {
+export default function DetailPanel({ wbs, data, activeTab, setActiveTab, selectedMonths, overrides, setOverrides, stroskiOverrides, setStroskiOverrides, wbsEdits }) {
+  const wbsGroups = effectiveGroups(data, wbsEdits)
+  const wbsLabels = Object.fromEntries(wbsGroups.map(g => [g, effectiveLabel(g, data, wbsEdits)]))
   return (
     <div className="detail-panel">
       <div className="detail-tabs">
@@ -357,10 +362,10 @@ export default function DetailPanel({ wbs, data, activeTab, setActiveTab, select
         </button>
       </div>
       <div className={`tab-content${activeTab === 'blist' ? ' active' : ''}`}>
-        <BlistDetail wbs={wbs} data={data} selectedMonths={selectedMonths} overrides={overrides} setOverrides={setOverrides} />
+        <BlistDetail wbs={wbs} data={data} selectedMonths={selectedMonths} overrides={overrides} setOverrides={setOverrides} wbsGroups={wbsGroups} wbsLabels={wbsLabels} />
       </div>
       <div className={`tab-content${activeTab === 'stroski' ? ' active' : ''}`}>
-        <StroskiDetail wbs={wbs} data={data} selectedMonths={selectedMonths} stroskiOverrides={stroskiOverrides} setStroskiOverrides={setStroskiOverrides} />
+        <StroskiDetail wbs={wbs} data={data} selectedMonths={selectedMonths} stroskiOverrides={stroskiOverrides} setStroskiOverrides={setStroskiOverrides} wbsGroups={wbsGroups} wbsLabels={wbsLabels} />
       </div>
     </div>
   )

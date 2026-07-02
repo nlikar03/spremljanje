@@ -1,5 +1,5 @@
-import { monthLabel, trunc } from '../utils/formatters'
-import { IconCalendar, IconDollarSign, IconLayers, IconInfo, IconTarget } from './Icons'
+import { monthLabel, trunc, fmtK } from '../utils/formatters'
+import { IconCalendar, IconDollarSign, IconLayers, IconInfo, IconTarget, IconCheck } from './Icons'
 
 function SidebarHeading({ icon, children }) {
   return (
@@ -10,9 +10,9 @@ function SidebarHeading({ icon, children }) {
   )
 }
 
-export default function Sidebar({ data, filtered, selectedMonths, setSelectedMonths, overrides, setOverrides, stroskiOverrides, setStroskiOverrides }) {
+export default function Sidebar({ data, filtered, precomputed, selectedMonths, setSelectedMonths, overrides, setOverrides, stroskiOverrides, setStroskiOverrides }) {
   const { topSuppliers, maxSupplier, topVrste } = filtered
-  const BLIST_MONTHS = new Set(data.blist_months)
+  const { allMonthlyEV = {}, allMonthlyAC = {} } = precomputed || {}
   const vrstaTotal = topVrste.reduce((s, [, v]) => s + v, 0)
 
   const byYear = {}
@@ -22,10 +22,18 @@ export default function Sidebar({ data, filtered, selectedMonths, setSelectedMon
     byYear[yr].push(m)
   })
 
-  function toggle(m, checked) {
+  // Scale bars to the biggest single-stream value across all months
+  const maxVal = Math.max(
+    1,
+    ...data.months.map(m => Math.max(allMonthlyEV[m] || 0, allMonthlyAC[m] || 0))
+  )
+
+  const selCount = data.months.filter(m => selectedMonths.has(m)).length
+
+  function toggle(m) {
     setSelectedMonths(prev => {
       const next = new Set(prev)
-      checked ? next.add(m) : next.delete(m)
+      next.has(m) ? next.delete(m) : next.add(m)
       return next
     })
   }
@@ -35,27 +43,49 @@ export default function Sidebar({ data, filtered, selectedMonths, setSelectedMon
       <div className="sidebar-section">
         <SidebarHeading icon={<IconCalendar size={12} />}>
           Obračunska obdobja
+          <span className="mp-count">{selCount}/{data.months.length}</span>
         </SidebarHeading>
         <div className="sidebar-btn-row">
           <button className="btn-sm" onClick={() => setSelectedMonths(new Set(data.months))}>Vse</button>
           <button className="btn-sm grey" onClick={() => setSelectedMonths(new Set())}>Nič</button>
         </div>
+
+        <div className="mp-legend">
+          <span><i className="mp-swatch mp-swatch-ev" /> Obračunano</span>
+          <span><i className="mp-swatch mp-swatch-ac" /> Stroški</span>
+        </div>
+
         {Object.keys(byYear).sort().map(yr => (
-          <div className="month-group" key={yr}>
+          <div className="mp-year" key={yr}>
             <div className="year-label">{yr}</div>
-            {byYear[yr].map(m => (
-              <label key={m}>
-                <input
-                  type="checkbox"
-                  checked={selectedMonths.has(m)}
-                  onChange={e => toggle(m, e.target.checked)}
-                />
-                {monthLabel(m)}{' '}
-                <span className={`badge ${BLIST_MONTHS.has(m) ? 'badge-b' : 'badge-s'}`}>
-                  {BLIST_MONTHS.has(m) ? 'B' : 'S'}
-                </span>
-              </label>
-            ))}
+            {byYear[yr].map(m => {
+              const ev = allMonthlyEV[m] || 0
+              const ac = allMonthlyAC[m] || 0
+              const sel = selectedMonths.has(m)
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  className={`mp-row${sel ? ' mp-row-sel' : ''}`}
+                  onClick={() => toggle(m)}
+                >
+                  <span className="mp-check">{sel && <IconCheck />}</span>
+                  <span className="mp-name">{monthLabel(m, true)}</span>
+                  <span className="mp-bars">
+                    <span className="mp-bar-track">
+                      <span className="mp-bar mp-bar-ev" style={{ width: `${ev / maxVal * 100}%` }} />
+                    </span>
+                    <span className="mp-bar-track">
+                      <span className="mp-bar mp-bar-ac" style={{ width: `${ac / maxVal * 100}%` }} />
+                    </span>
+                  </span>
+                  <span className="mp-vals">
+                    <span className={`mp-val mp-val-ev${ev ? '' : ' mp-val-zero'}`}>{ev ? fmtK(ev) : '–'}</span>
+                    <span className={`mp-val mp-val-ac${ac ? '' : ' mp-val-zero'}`}>{ac ? fmtK(ac) : '–'}</span>
+                  </span>
+                </button>
+              )
+            })}
           </div>
         ))}
       </div>
@@ -136,12 +166,12 @@ export default function Sidebar({ data, filtered, selectedMonths, setSelectedMon
         </div>
         <hr className="legend-sep" />
         <div className="legend-item">
-          <span className="badge badge-b">B</span>
-          mesec v BLIST
+          <span className="mp-swatch mp-swatch-ev" />
+          obračunano (BLIST / EV)
         </div>
         <div className="legend-item">
-          <span className="badge badge-s">S</span>
-          samo SAP
+          <span className="mp-swatch mp-swatch-ac" />
+          stroški (SAP / AC)
         </div>
         <hr className="legend-sep" />
         <div className="legend-item" style={{ fontSize: 10, fontWeight: 600, color: 'var(--navy)', marginBottom: 3 }}>CPI</div>

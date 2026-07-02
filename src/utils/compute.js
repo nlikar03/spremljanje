@@ -18,6 +18,44 @@ export function resolveStroskiWBS(it, idx, stroskiOverrides) {
   return v !== undefined ? v : it.wbs_group
 }
 
+// --- WBS management: derive the effective group list + labels ---
+// wbsEdits = { customGroups: string[], labelOverrides: {g: label}, deletedGroups: string[] }
+
+export function effectiveGroups(data, wbsEdits = {}) {
+  const { customGroups = [], deletedGroups = [] } = wbsEdits
+  const del = new Set(deletedGroups)
+  const seen = new Set()
+  const out = []
+  for (const g of [...data.wbs_groups, ...customGroups]) {
+    if (del.has(g) || seen.has(g)) continue
+    seen.add(g)
+    out.push(g)
+  }
+  return out
+}
+
+export function effectiveLabel(g, data, wbsEdits = {}) {
+  const { labelOverrides = {} } = wbsEdits
+  if (labelOverrides[g] !== undefined) return labelOverrides[g]
+  return data.wbs_labels[g] || g
+}
+
+// True if a group holds no items under the current moves (safe to delete).
+// A group is deletable only if NOTHING resolves here AND nothing originates
+// here — otherwise a moved-away item could never be reset back to its home.
+export function groupIsEmpty(g, data, overrides = {}, stroskiOverrides = {}) {
+  for (const it of data.blist_items) {
+    if (it.wbs_group === g) return false
+    if (resolveWBS(it, overrides) === g) return false
+  }
+  for (let i = 0; i < data.stroski_items.length; i++) {
+    const it = data.stroski_items[i]
+    if (it.wbs_group === g) return false
+    if (resolveStroskiWBS(it, i, stroskiOverrides) === g) return false
+  }
+  return true
+}
+
 export function precompute(data) {
   const BAC = data.blist_items.reduce((s, x) => s + x.znesek_pc, 0)
 
@@ -70,10 +108,10 @@ export function precompute(data) {
   return { BAC, allMonthlyEV, allMonthlyAC, cumEV, cumAC, wbsBACmap, wbsEVtotal, topSuppliers, maxSupplier, topVrste }
 }
 
-export function computeSummaries(data, selectedMonths, overrides = {}, stroskiOverrides = {}) {
+export function computeSummaries(data, selectedMonths, overrides = {}, stroskiOverrides = {}, wbsEdits = {}) {
   const groups = {}
-  for (const g of data.wbs_groups) {
-    groups[g] = { wbs: g, label: data.wbs_labels[g] || g, pog: 0, obrKol: 0, obrZn: 0, strZn: 0 }
+  for (const g of effectiveGroups(data, wbsEdits)) {
+    groups[g] = { wbs: g, label: effectiveLabel(g, data, wbsEdits), pog: 0, obrKol: 0, obrZn: 0, strZn: 0 }
   }
   data.blist_items.forEach(it => {
     const wbs = resolveWBS(it, overrides)

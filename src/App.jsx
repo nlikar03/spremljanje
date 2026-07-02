@@ -6,6 +6,7 @@ import MainTable from './components/MainTable'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import { precompute, computeSummaries, computeKPIs, computeFiltered } from './utils/compute'
+import { loadSnapshot, saveSnapshot, clearSnapshot } from './utils/snapshot'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL
 
@@ -161,15 +162,17 @@ function UploadScreen({ token, onData }) {
 }
 
 export default function App() {
-  const [data, setData] = useState(null)
+  const snap = useMemo(() => loadSnapshot(), [])
+  const [data, setData] = useState(snap?.data || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [token, setToken] = useState(() => sessionStorage.getItem('token'))
-  const [selectedMonths, setSelectedMonths] = useState(new Set())
+  const [selectedMonths, setSelectedMonths] = useState(() => snap?.selectedMonths || new Set())
   const [expandedWBS, setExpandedWBS] = useState(null)
   const [activeTab, setActiveTab] = useState({})
-  const [overrides, setOverrides] = useState({})
-  const [stroskiOverrides, setStroskiOverrides] = useState({})
+  const [overrides, setOverrides] = useState(() => snap?.overrides || {})
+  const [stroskiOverrides, setStroskiOverrides] = useState(() => snap?.stroskiOverrides || {})
+  const [wbsEdits, setWbsEdits] = useState(() => snap?.wbsEdits || { customGroups: [], labelOverrides: {}, deletedGroups: [] })
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
 
   useEffect(() => {
@@ -177,13 +180,34 @@ export default function App() {
     localStorage.setItem('theme', theme)
   }, [theme])
 
+  // Persist the open report + edits so a reload restores exactly where you were.
+  useEffect(() => {
+    if (!data) return
+    saveSnapshot({ data, overrides, stroskiOverrides, selectedMonths, wbsEdits })
+  }, [data, overrides, stroskiOverrides, selectedMonths, wbsEdits])
+
+  const EMPTY_EDITS = { customGroups: [], labelOverrides: {}, deletedGroups: [] }
+
   function handleData(d) {
+    // New upload replaces any saved snapshot and resets edits.
+    setOverrides({})
+    setStroskiOverrides({})
+    setWbsEdits(EMPTY_EDITS)
     setData(d)
     setSelectedMonths(new Set(d.blist_months))
   }
 
+  function newUpload() {
+    clearSnapshot()
+    setData(null)
+    setOverrides({})
+    setStroskiOverrides({})
+    setWbsEdits(EMPTY_EDITS)
+    setSelectedMonths(new Set())
+  }
+
   const precomputed = useMemo(() => data ? precompute(data) : null, [data])
-  const summaries = useMemo(() => data ? computeSummaries(data, selectedMonths, overrides, stroskiOverrides) : [], [data, selectedMonths, overrides, stroskiOverrides])
+  const summaries = useMemo(() => data ? computeSummaries(data, selectedMonths, overrides, stroskiOverrides, wbsEdits) : [], [data, selectedMonths, overrides, stroskiOverrides, wbsEdits])
   const filtered = useMemo(() => data ? computeFiltered(data, selectedMonths, overrides) : null, [data, selectedMonths, overrides])
   const kpis = useMemo(() => precomputed ? computeKPIs(summaries, precomputed.BAC) : null, [summaries, precomputed])
 
@@ -193,7 +217,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Header theme={theme} setTheme={setTheme} onNewUpload={() => { setData(null); setOverrides({}); setStroskiOverrides({}) }} />
+      <Header theme={theme} setTheme={setTheme} onNewUpload={newUpload} />
       <KPIBar kpis={kpis} bac={precomputed.BAC} />
       <div className="main">
         <div className="content">
@@ -211,11 +235,14 @@ export default function App() {
             setOverrides={setOverrides}
             stroskiOverrides={stroskiOverrides}
             setStroskiOverrides={setStroskiOverrides}
+            wbsEdits={wbsEdits}
+            setWbsEdits={setWbsEdits}
           />
         </div>
         <Sidebar
           data={data}
           filtered={filtered}
+          precomputed={precomputed}
           selectedMonths={selectedMonths}
           setSelectedMonths={setSelectedMonths}
           overrides={overrides}
