@@ -10,7 +10,7 @@ function SidebarHeading({ icon, children }) {
   )
 }
 
-export default function Sidebar({ data, filtered, selectedMonths, setSelectedMonths, overrides, setOverrides }) {
+export default function Sidebar({ data, filtered, selectedMonths, setSelectedMonths, overrides, setOverrides, stroskiOverrides, setStroskiOverrides }) {
   const { topSuppliers, maxSupplier, topVrste } = filtered
   const BLIST_MONTHS = new Set(data.blist_months)
   const vrstaTotal = topVrste.reduce((s, [, v]) => s + v, 0)
@@ -97,18 +97,25 @@ export default function Sidebar({ data, filtered, selectedMonths, setSelectedMon
         }
       </div>
 
-      {Object.keys(overrides).length > 0 && (
+      {(Object.keys(overrides).length > 0 || Object.keys(stroskiOverrides).length > 0) && (
         <div className="sidebar-section">
           <SidebarHeading icon={<IconTarget size={12} />}>
             Prerazporeditve
           </SidebarHeading>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 7 }}>
-            {Object.keys(overrides).length} postavk {Object.keys(overrides).length === 1 ? 'premaknjena' : 'premaknjenih'}
-          </div>
+          {Object.keys(overrides).length > 0 && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 7 }}>
+              {Object.keys(overrides).length} postavk {Object.keys(overrides).length === 1 ? 'premaknjena' : 'premaknjenih'}
+            </div>
+          )}
+          {Object.keys(stroskiOverrides).length > 0 && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 7 }}>
+              {Object.keys(stroskiOverrides).length} stroškov {Object.keys(stroskiOverrides).length === 1 ? 'premaknjen' : 'premaknjenih'}
+            </div>
+          )}
           <button
             className="btn-sm"
             style={{ background: 'var(--amber)', width: '100%' }}
-            onClick={() => setOverrides({})}
+            onClick={() => { setOverrides({}); setStroskiOverrides({}) }}
           >
             Ponastavi vse
           </button>

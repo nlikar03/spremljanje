@@ -7,6 +7,17 @@ export function resolveWBS(it, overrides) {
   return v !== undefined ? v : it.wbs_group
 }
 
+// Stroski rows have no natural unique id, so include the row index to keep
+// otherwise-identical rows independently movable.
+export function stroskiKey(it, idx) {
+  return [idx, it.wbs, it.datum, it.oznaka, it.znesek, it.tekst].join('\x00')
+}
+
+export function resolveStroskiWBS(it, idx, stroskiOverrides) {
+  const v = stroskiOverrides[stroskiKey(it, idx)]
+  return v !== undefined ? v : it.wbs_group
+}
+
 export function precompute(data) {
   const BAC = data.blist_items.reduce((s, x) => s + x.znesek_pc, 0)
 
@@ -59,7 +70,7 @@ export function precompute(data) {
   return { BAC, allMonthlyEV, allMonthlyAC, cumEV, cumAC, wbsBACmap, wbsEVtotal, topSuppliers, maxSupplier, topVrste }
 }
 
-export function computeSummaries(data, selectedMonths, overrides = {}) {
+export function computeSummaries(data, selectedMonths, overrides = {}, stroskiOverrides = {}) {
   const groups = {}
   for (const g of data.wbs_groups) {
     groups[g] = { wbs: g, label: data.wbs_labels[g] || g, pog: 0, obrKol: 0, obrZn: 0, strZn: 0 }
@@ -72,8 +83,9 @@ export function computeSummaries(data, selectedMonths, overrides = {}) {
       if (selectedMonths.has(m)) { g.obrKol += md.kolicina; g.obrZn += md.znesek }
     })
   })
-  data.stroski_items.forEach(it => {
-    const g = groups[it.wbs_group]; if (!g) return
+  data.stroski_items.forEach((it, i) => {
+    const wbs = resolveStroskiWBS(it, i, stroskiOverrides)
+    const g = groups[wbs]; if (!g) return
     if (selectedMonths.has(it.mesec)) g.strZn += it.znesek
   })
   return Object.values(groups)

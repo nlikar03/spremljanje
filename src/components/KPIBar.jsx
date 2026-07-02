@@ -23,6 +23,7 @@ export default function KPIBar({ kpis, bac }) {
       <KPICard
         label="BAC" value={fmtM(bac)} sub="Pogodbena vrednost"
         highlight
+        colorClass="kpi-neutral"
       />
       <KPICard
         label="EV — Obračunano" value={fmtM(EV)} sub="BLIST situacije"
