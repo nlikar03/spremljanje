@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Header from './components/Header'
 import KPIBar from './components/KPIBar'
 import Charts from './components/Charts'
@@ -95,20 +95,124 @@ function LoginScreen({ onLogin }) {
   )
 }
 
+function formatSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function extOk(file, accept) {
+  const exts = accept.split(',').map(s => s.trim().toLowerCase())
+  const name = file.name.toLowerCase()
+  return exts.some(e => name.endsWith(e))
+}
+
+function DropBox({ label, hint, accept, file, setFile, optional }) {
+  const [drag, setDrag] = useState(false)
+  const [badType, setBadType] = useState(false)
+  const inputRef = useRef(null)
+
+  function pick(f) {
+    if (!f) return
+    if (!extOk(f, accept)) { setBadType(true); return }
+    setBadType(false)
+    setFile(f)
+  }
+
+  function onDrop(e) {
+    e.preventDefault(); setDrag(false)
+    pick(e.dataTransfer.files?.[0])
+  }
+
+  const filled = !!file
+  const borderColor = badType ? 'var(--red)'
+    : drag ? 'rgba(88,166,255,0.8)'
+    : filled ? 'rgba(63,185,80,0.5)'
+    : 'var(--glass-border)'
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{label}</span>
+        {optional && <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>(neobvezno)</span>}
+      </div>
+      <div
+        onClick={() => inputRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); setDrag(true) }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={onDrop}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '14px 16px', cursor: 'pointer', userSelect: 'none',
+          background: drag ? 'rgba(88,166,255,0.08)' : filled ? 'rgba(63,185,80,0.06)' : 'var(--bg2)',
+          border: `1.5px dashed ${borderColor}`, borderRadius: 10,
+          transition: 'border-color .15s, background .15s',
+        }}
+      >
+        <div style={{
+          width: 34, height: 34, flexShrink: 0, borderRadius: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: filled ? 'rgba(63,185,80,0.12)' : 'rgba(88,166,255,0.10)',
+          border: `1px solid ${filled ? 'rgba(63,185,80,0.3)' : 'rgba(88,166,255,0.2)'}`,
+          color: filled ? '#3fb950' : '#58a6ff',
+        }}>
+          {filled ? (
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          ) : (
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+          )}
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          {filled ? (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{formatSize(file.size)}</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, color: 'var(--text)' }}>Povlecite datoteko sem ali <span style={{ color: '#58a6ff', fontWeight: 600 }}>izberite</span></div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{hint}</div>
+            </>
+          )}
+        </div>
+        {filled && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setFile(null); setBadType(false); if (inputRef.current) inputRef.current.value = '' }}
+            title="Odstrani"
+            style={{
+              flexShrink: 0, width: 24, height: 24, borderRadius: 6, cursor: 'pointer',
+              background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-muted)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        )}
+        <input ref={inputRef} type="file" accept={accept} style={{ display: 'none' }}
+          onChange={e => pick(e.target.files?.[0])} />
+      </div>
+      {badType && <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 5 }}>Napačna vrsta datoteke. Pričakovano: {accept}</div>}
+    </div>
+  )
+}
+
 function UploadScreen({ token, onData }) {
   const [blist, setBlist] = useState(null)
   const [stroski, setStroski] = useState(null)
+  const [wbs, setWbs] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!blist || !stroski) { setError('Naložite obe datoteki.'); return }
+    if (!blist || !stroski) { setError('Naložite datoteki BLIST in SAP stroški.'); return }
     setLoading(true); setError(null)
     try {
       const fd = new FormData()
       fd.append('blist', blist)
       fd.append('stroski', stroski)
+      if (wbs) fd.append('wbs', wbs)
       const r = await fetch(`${BACKEND}/upload`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -127,30 +231,22 @@ function UploadScreen({ token, onData }) {
     }
   }
 
-  const fileRow = (label, hint, file, setFile, accept) => (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>{hint}</div>
-      <input type="file" accept={accept} onChange={e => setFile(e.target.files[0] || null)}
-        style={{ fontSize: 12, color: 'var(--text)' }} />
-    </div>
-  )
-
   return (
     <div className="app">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 24, background: 'var(--bg)', backgroundImage: 'radial-gradient(ellipse at 50% 0%, rgba(88,166,255,0.08) 0%, transparent 60%)' }}>
         <form onSubmit={handleSubmit} style={{
           background: 'var(--surface)', border: '1px solid var(--glass-border)', borderRadius: 16,
-          padding: '32px', minWidth: 380, boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+          padding: '32px', width: 440, maxWidth: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
         }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Naloži izvoze projekta</div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 20 }}>Poročilo se izdela iz obeh datotek.</div>
-          {fileRow('BLIST izvoz', 'blistExport.xlsx', blist, setBlist, '.xlsx')}
-          {fileRow('SAP stroški', 'exportStroski.txt', stroski, setStroski, '.txt')}
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Naloži izvoze projekta</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 22 }}>Poročilo se izdela iz izvozov BLIST in SAP. Datoteko WBS dodajte za pravilna imena WBS elementov.</div>
+          <DropBox label="BLIST izvoz" hint="Excel (.xlsx)" accept=".xlsx" file={blist} setFile={setBlist} />
+          <DropBox label="SAP stroški" hint="Tekstovni izvoz (.txt) ali Excel (.xlsx)" accept=".txt,.xlsx" file={stroski} setFile={setStroski} />
+          <DropBox label="WBS imena" hint="Excel s stolpcema Code in Description (.xlsx)" accept=".xlsx" file={wbs} setFile={setWbs} optional />
           {error && <div style={{ color: 'var(--red)', fontSize: 11, margin: '10px 0', padding: '6px 10px', background: 'rgba(248,81,73,0.1)', borderRadius: 6, border: '1px solid rgba(248,81,73,0.2)' }}>{error}</div>}
           <button type="submit" disabled={loading} style={{
-            width: '100%', padding: '9px', background: '#1f6feb', color: '#fff',
-            border: '1px solid rgba(88,166,255,0.3)', borderRadius: 8, marginTop: 8,
+            width: '100%', padding: '10px', background: '#1f6feb', color: '#fff',
+            border: '1px solid rgba(88,166,255,0.3)', borderRadius: 8, marginTop: 10,
             fontSize: 13, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1,
           }}>
             {loading ? 'Obdelujem…' : 'Ustvari poročilo'}
